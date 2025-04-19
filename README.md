@@ -6,7 +6,7 @@ This project involves training a Convolutional Neural Network (CNN) from scratch
 for Q1  Just Create CNN class using 5 layers 
 
 ## train using hyperparameter tuning 
-   parser = argparse.ArgumentParser()
+# wandb arguments
     parser.add_argument("--wandb_entity", default="manglesh-patidar-cs23m025")
     parser.add_argument("--wandb_project", default="inaturalist-cnn")
     parser.add_argument("--sweep", action="store_true")
