@@ -229,6 +229,8 @@ def train_model(args):
     wandb.finish() 
 
 if __name__ == "__main__":
+    wandb.login(key="6001619563748a57b4114b0bb090fd4129ba6122")
+
     parser = argparse.ArgumentParser(description="Fine-tune ResNet50 on iNaturalist dataset")
     
     parser.add_argument("--wandb_entity", "-we", default="manglesh-patidar-cs24m025",
