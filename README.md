@@ -82,8 +82,7 @@ in this ResNet50 perform better
                        default='adamw')
     parser.add_argument("--learning_rate", "-lr", type=float, default=1e-3)
     parser.add_argument("--weight_decay", "-w_d", type=float, default=1e-4)
-    parser.add_argument("--scheduler_factor", type=float, default=0.1)
-    parser.add_argument("--scheduler_patience", type=int, default=2)
+
     
     # Data parameters
     parser.add_argument("--base_dir", "-br", default="inaturalist_12K")
