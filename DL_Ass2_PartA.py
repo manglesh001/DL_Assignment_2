@@ -10,82 +10,135 @@ from torchvision.datasets import ImageFolder
 import wandb
 from tqdm import tqdm
 
-def get_activation(name):
-    activations = {
-        'relu': nn.ReLU(),
-        'gelu': nn.GELU(),
-        'silu': nn.SiLU(),
-        'mish': nn.Mish()
-    }
-    return activations.get(name, nn.ReLU())
-
-def get_dataset_and_loaders(data_dir, train_transform, val_transform, batch_size=64, val_split=0.2):
-    full_train_dataset = ImageFolder(os.path.join(data_dir, 'train'), transform=train_transform)
-    targets = np.array(full_train_dataset.targets)
-    train_indices, val_indices = [], []
-    for class_idx in range(len(full_train_dataset.classes)):
-        class_indices = np.where(targets == class_idx)[0]
-        n_val = int(len(class_indices) * val_split)
-        np.random.shuffle(class_indices)
-        val_indices.extend(class_indices[:n_val])
-        train_indices.extend(class_indices[n_val:])
-    train_dataset = Subset(full_train_dataset, train_indices)
-    val_dataset = Subset(full_train_dataset, val_indices)
-    val_dataset.dataset.transform = val_transform
-    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=2)
-    val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, num_workers=2)
-    return train_loader, val_loader, full_train_dataset.classes
-
+# CNN model class definition
 class CNN(nn.Module):
     def __init__(self, num_classes=10, filter_counts=[32, 32, 32, 32, 32], filter_sizes=[(3,3)]*5,
                  activation_func=nn.ReLU(), fc_neurons=512, use_batch_norm=True, dropout_rate=0.2):
         super(CNN, self).__init__()
+        
+        # Create a module list for feature extraction layers
         self.features = nn.ModuleList()
-        in_channels = 3
+        in_channels = 3  # Starting with 3 channels for RGB images
+        
+        # Build the convolutional blocks
         for i in range(5):
+            # Add convolutional layer
             self.features.append(nn.Conv2d(in_channels, filter_counts[i], kernel_size=filter_sizes[i], padding='same'))
+            
+            # Add batch normalization if specified
             if use_batch_norm:
                 self.features.append(nn.BatchNorm2d(filter_counts[i]))
+            
+            # Add activation function
             self.features.append(activation_func)
+            
+            # Add max pooling
             self.features.append(nn.MaxPool2d(kernel_size=2, stride=2))
+            
+            # Update input channels for next layer
             in_channels = filter_counts[i]
+        
+        # Adaptive pooling to handle different input sizes
         self.adaptive_pool = nn.AdaptiveAvgPool2d((1, 1))
+        
+        # Classifier (fully connected) layers
         self.classifier = nn.Sequential(
-            nn.Linear(filter_counts[-1], fc_neurons),
-            activation_func,
-            nn.Dropout(dropout_rate) if dropout_rate > 0 else nn.Identity(),
-            nn.Linear(fc_neurons, num_classes)
+            nn.Linear(filter_counts[-1], fc_neurons),  # First FC layer
+            activation_func,  # Activation
+            nn.Dropout(dropout_rate) if dropout_rate > 0 else nn.Identity(),  # Dropout if specified
+            nn.Linear(fc_neurons, num_classes)  # Final classification layer
+        )
+    
     def forward(self, x):
+        # Pass through all feature extraction layers
         for layer in self.features:
             x = layer(x)
+        
+        # Global average pooling and flatten
         x = self.adaptive_pool(x)
         x = torch.flatten(x, 1)
+        
+        # Pass through classifier
         return self.classifier(x)
         
 
 
+## Function to create dataset and data loaders for train and validation
+def get_dataset_and_loaders(data_dir, train_transform, val_transform, batch_size=64, val_split=0.2):
+    # Load full training dataset from the specified directory
+    full_train_dataset = ImageFolder(os.path.join(data_dir, 'train'), transform=train_transform)
+    
+    targets = np.array(full_train_dataset.targets)
+    train_indices, val_indices = [], []
+    
+    # For each class, split indices into train and validation
+    for class_idx in range(len(full_train_dataset.classes)):
+        class_indices = np.where(targets == class_idx)[0]  
+        n_val = int(len(class_indices) * val_split) 
+        np.random.shuffle(class_indices) 
+        
+        val_indices.extend(class_indices[:n_val])
+        train_indices.extend(class_indices[n_val:])
+    
+    # Create train and validation subsets
+    train_dataset = Subset(full_train_dataset, train_indices)
+    val_dataset = Subset(full_train_dataset, val_indices)
+    
+    # Apply validation transform to validation dataset
+    val_dataset.dataset.transform = val_transform
+    
+    # Create data loaders for train and validation
+    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=2)
+    val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, num_workers=2)
+    
+    return train_loader, val_loader, full_train_dataset.classes
+
+# Helper function to get activation function based on name
+def get_activation(name):
+    activations = {
+        'relu': nn.ReLU(),  
+        'gelu': nn.GELU(),  
+        'silu': nn.SiLU(), 
+        'mish': nn.Mish()  
+    }
+    return activations.get(name, nn.ReLU())  
+
+
+
+
+# Main training function
 def train(config):
+    # Set device (GPU if available, else CPU)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    
+    # Define input size for images Resize 
     input_size = 160
+    
+    # Define training transforms with or without data augmentation
     train_transform = transforms.Compose([
         transforms.Resize((input_size, input_size)),
-        transforms.RandomHorizontalFlip(),
-        transforms.RandomRotation(15),
+        transforms.RandomHorizontalFlip(),  
+        transforms.RandomRotation(15),  
         transforms.ColorJitter(brightness=0.1, contrast=0.1, saturation=0.1, hue=0.1),
-        transforms.ToTensor(),
-        transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
+        transforms.ToTensor(), 
+        transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])  
     ]) if config['data_aug'] else transforms.Compose([
         transforms.Resize((input_size, input_size)),
         transforms.ToTensor(),
         transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
     ])
+    
     val_transform = transforms.Compose([
         transforms.Resize((input_size, input_size)),
         transforms.ToTensor(),
         transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
     ])
+    
+    # Get data loaders and classes
     train_loader, val_loader, classes = get_dataset_and_loaders(
         config['base_dir'], train_transform, val_transform, config['train_batch_size'])
+    
+    # Initialize model with configuration parameters
     model = CNN(
         num_classes=len(classes),
         filter_counts=config['filter_counts'],
@@ -95,29 +148,49 @@ def train(config):
         use_batch_norm=config['batch_norm_use'],
         dropout_rate=config['dropout']
     ).to(device)
-    criterion = nn.CrossEntropyLoss()
+    
+    # Define loss function and optimizer
+    criterion = nn.CrossEntropyLoss() 
     optimizer = optim.Adam(model.parameters(), lr=config['learning_rate'], weight_decay=config['weight_decay'])
+    
+    # Learning rate scheduler
     scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min', factor=0.1, patience=3)
+    
+    # Track best validation accuracy
     best_val_acc = 0.0
+    
+    # Training loop
     for epoch in range(config['epochs']):
-        model.train()
+        model.train()  
         train_loss, train_correct, train_total = 0.0, 0, 0
+        
         for inputs, labels in tqdm(train_loader, desc=f"Epoch {epoch+1} [Train]"):
-            inputs, labels = inputs.to(device), labels.to(device)
+            inputs, labels = inputs.to(device), labels.to(device)            
             optimizer.zero_grad()
+            
+            # Forward pass
             outputs = model(inputs)
             loss = criterion(outputs, labels)
+            
+            # Backward pass and optimize
             loss.backward()
             optimizer.step()
+            
+            # Update training metrics
             train_loss += loss.item() * inputs.size(0)
             _, predicted = outputs.max(1)
             train_total += labels.size(0)
             train_correct += predicted.eq(labels).sum().item()
+        
+        # Calculate epoch training metrics
         train_loss /= len(train_loader.dataset)
         train_acc = train_correct / train_total
+        
+        # Validation phase
         model.eval()
         val_loss, val_correct, val_total = 0.0, 0, 0
-        with torch.no_grad():
+        
+        with torch.no_grad():  # No gradient calculation for validation
             for inputs, labels in tqdm(val_loader, desc=f"Epoch {epoch+1} [Val]"):
                 inputs, labels = inputs.to(device), labels.to(device)
                 outputs = model(inputs)
@@ -125,8 +198,12 @@ def train(config):
                 _, predicted = outputs.max(1)
                 val_total += labels.size(0)
                 val_correct += predicted.eq(labels).sum().item()
+        
+        # Calculate validation metrics
         val_loss /= len(val_loader.dataset)
         val_acc = val_correct / val_total
+        
+        # Log metrics to wandb
         wandb.log({
             "epoch": epoch+1,
             "train_loss": train_loss,
@@ -134,13 +211,18 @@ def train(config):
             "val_loss": val_loss,
             "val_accuracy": val_acc
         })
+        
+        # Save best model
         if val_acc > best_val_acc:
             best_val_acc = val_acc
             torch.save(model.state_dict(), 'best_model.pth')
+        
+        # Print epoch summary
         print(f"Epoch {epoch+1}: Train Loss {train_loss:.4f}, Acc {train_acc:.4f}; Val Loss {val_loss:.4f}, Acc {val_acc:.4f}")
 
+# Sweep configuration for hyperparameter tuning
 sweep_config = {
-    'method': 'random',
+    'method': 'Bayes', 
     'parameters': {
         'learning_rate': {'values': [0.001, 0.0005, 0.0001, 0.01]},
         'train_batch_size': {'values': [64, 128]},
@@ -164,7 +246,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--wandb_entity", default="manglesh-patidar-cs24m025")
     parser.add_argument("--wandb_project", default="inaturalist-cnn")
-    parser.add_argument("--sweep", action="store_true")
+    parser.add_argument("--sweep", action="store_true") 
     parser.add_argument("--epochs", type=int, default=10)
     parser.add_argument("--batch_size", type=int, default=64)
     parser.add_argument("--learning_rate", type=float, default=0.001)
@@ -183,6 +265,7 @@ def main():
         sweep_id = wandb.sweep(sweep_config, project=args.wandb_project, entity=args.wandb_entity)
         wandb.agent(sweep_id, lambda: train(wandb.config), count=20)
     else:
+        # Prepare config dictionary from arguments
         config = {
             'learning_rate': args.learning_rate,
             'train_batch_size': args.batch_size,
@@ -197,10 +280,11 @@ def main():
             'base_dir': args.base_dir,
             'weight_decay': args.weight_decay
         }
+        # Initialize wandb run
         wandb.init(project=args.wandb_project, entity=args.wandb_entity, config=config)
         train(config)
+        # Finish wandb run
         wandb.finish()
 
 if __name__ == "__main__":
     main()
-
