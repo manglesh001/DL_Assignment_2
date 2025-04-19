@@ -162,8 +162,8 @@ sweep_config = {
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--wandb_entity", default="cs23m065")
-    parser.add_argument("--wandb_project", default="Assignment 2")
+    parser.add_argument("--wandb_entity", default="cs24m025")
+    parser.add_argument("--wandb_project", default="inaturalist-cnn")
     parser.add_argument("--sweep", action="store_true")
     parser.add_argument("--epochs", type=int, default=10)
     parser.add_argument("--batch_size", type=int, default=64)
@@ -181,7 +181,7 @@ def main():
     
     if args.sweep:
         sweep_id = wandb.sweep(sweep_config, project=args.wandb_project, entity=args.wandb_entity)
-        wandb.agent(sweep_id, lambda: train(wandb.config), count=10)
+        wandb.agent(sweep_id, lambda: train(wandb.config), count=20)
     else:
         config = {
             'learning_rate': args.learning_rate,
