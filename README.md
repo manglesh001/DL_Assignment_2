@@ -123,6 +123,6 @@ Q4:  https://github.com/manglesh001/DL_Assignment_2/blob/main/DL_Ass_2_PartB.py
 
 
 
-Report Link: 
+Report Link: https://api.wandb.ai/links/manglesh-patidar-cs24m025/dvbcg3wi
 
 
