@@ -162,7 +162,7 @@ sweep_config = {
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--wandb_entity", default="cs24m025")
+    parser.add_argument("--wandb_entity", default="manglesh-patidar-cs24m025")
     parser.add_argument("--wandb_project", default="inaturalist-cnn")
     parser.add_argument("--sweep", action="store_true")
     parser.add_argument("--epochs", type=int, default=10)
