@@ -243,6 +243,8 @@ sweep_config = {
 }
 
 def main():
+    wandb.login(key="6001619563748a57b4114b0bb090fd4129ba6122")
+
     parser = argparse.ArgumentParser()
     parser.add_argument("--wandb_entity", default="manglesh-patidar-cs24m025")
     parser.add_argument("--wandb_project", default="inaturalist-cnn")
